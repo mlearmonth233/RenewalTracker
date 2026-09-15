@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RenewalTracker</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">⟳</span>
+      <span>RenewalTracker</span>
+    </div>
+    <nav id="nav" class="nav hidden">
+      <button data-view="dashboard" class="nav-btn active">Dashboard</button>
+      <button data-view="items" class="nav-btn">Items</button>
+      <button data-view="alerts" class="nav-btn">Alerts <span id="alert-badge" class="badge hidden">0</span></button>
+      <button data-view="import" class="nav-btn">Import e-mail</button>
+      <button data-view="settings" class="nav-btn">Settings</button>
+    </nav>
+    <div id="user-box" class="user-box hidden">
+      <span id="user-name"></span>
+      <button id="logout-btn" class="btn btn-ghost btn-sm">Log out</button>
+    </div>
+  </header>
+
+  <main id="app">
+    <!-- Auth -->
+    <section id="view-auth" class="view">
+      <div class="auth-card">
+        <h1>Never miss a renewal again</h1>
+        <p class="muted">Track bills, subscriptions, insurance policies and passports in one place. Get alerted before they renew or expire.</p>
+        <div class="tabs">
+          <button class="tab active" data-auth="login">Log in</button>
+          <button class="tab" data-auth="register">Create account</button>
+        </div>
+        <form id="auth-form" class="form">
+          <label>Username <input name="username" required autocomplete="username"></label>
+          <label id="auth-email-row" class="hidden">E-mail (for reminders) <input name="email" type="email" autocomplete="email"></label>
+          <label>Password <input name="password" type="password" required minlength="8" autocomplete="current-password"></label>
+          <button class="btn btn-primary" type="submit" id="auth-submit">Log in</button>
+          <p id="auth-error" class="error"></p>
+        </form>
+      </div>
+    </section>
+
+    <!-- Dashboard -->
+    <section id="view-dashboard" class="view hidden">
+      <div class="view-header">
+        <h1>Dashboard</h1>
+        <div class="actions">
+          <button id="dash-check-btn" class="btn btn-ghost">Check renewals now</button>
+          <button class="btn btn-primary" data-action="new-item">+ Add item</button>
+        </div>
+      </div>
+      <div id="stats" class="stats"></div>
+      <div id="dash-buckets"></div>
+    </section>
+
+    <!-- Items -->
+    <section id="view-items" class="view hidden">
+      <div class="view-header">
+        <h1>Tracked items</h1>
+        <div class="actions">
+          <a class="btn btn-ghost" href="/api/export.ics" download="renewals.ics">Export calendar (.ics)</a>
+          <button class="btn btn-primary" data-action="new-item">+ Add item</button>
+        </div>
+      </div>
+      <div class="filters">
+        <input id="items-search" type="search" placeholder="Search name, provider, notes…">
+        <select id="items-category">
+          <option value="">All categories</option>
+        </select>
+        <label class="check"><input type="checkbox" id="items-archived"> Show archived</label>
+      </div>
+      <div id="items-list" class="item-list"></div>
+    </section>
+
+    <!-- Alerts -->
+    <section id="view-alerts" class="view hidden">
+      <div class="view-header">
+        <h1>Alerts</h1>
+        <div class="actions">
+          <button id="alerts-check-btn" class="btn btn-ghost">Check renewals now</button>
+          <button id="alerts-ack-all" class="btn btn-ghost">Mark all as read</button>
+        </div>
+      </div>
+      <div id="alerts-list" class="alert-list"></div>
+    </section>
+
+    <!-- Import -->
+    <section id="view-import" class="view hidden">
+      <div class="view-header">
+        <h1>Import an e-mail confirmation</h1>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <h2>1. Provide the e-mail</h2>
+          <p class="muted">Upload the saved message (<code>.eml</code>) from your mail client, or paste the e-mail text below. We'll pull out the provider, amount, renewal date and reference for you to review.</p>
+          <form id="import-file-form" class="form">
+            <label>Upload file <input type="file" name="file" accept=".eml,.txt,.html,.htm,.msg"></label>
+            <button class="btn btn-primary" type="submit">Upload &amp; parse</button>
+          </form>
+          <div class="divider">or</div>
+          <form id="import-text-form" class="form">
+            <label>Paste e-mail text
+              <textarea name="text" rows="10" placeholder="Subject: Your car insurance renewal&#10;&#10;Hi Michael, your policy ABC123456 renews on 14 March 2027 for £412.50…"></textarea>
+            </label>
+            <button class="btn btn-primary" type="submit">Parse text</button>
+          </form>
+          <p id="import-error" class="error"></p>
+        </div>
+        <div class="card">
+          <h2>2. Review &amp; confirm</h2>
+          <div id="import-review"><p class="muted">Parsed details will appear here.</p></div>
+        </div>
+      </div>
+      <h2 class="section-title">Recent imports</h2>
+      <div id="imports-list" class="item-list"></div>
+    </section>
+
+    <!-- Settings -->
+    <section id="view-settings" class="view hidden">
+      <div class="view-header"><h1>Settings</h1></div>
+      <div class="card narrow">
+        <h2>Notifications</h2>
+        <form id="settings-form" class="form">
+          <label>Reminder e-mail address <input name="email" type="email" placeholder="you@example.com"></label>
+          <label class="check"><input type="checkbox" name="notify_by_email"> Send alert digests by e-mail (requires SMTP configured on the server)</label>
+          <h3>Change password</h3>
+          <label>Current password <input name="current_password" type="password" autocomplete="current-password"></label>
+          <label>New password <input name="new_password" type="password" minlength="8" autocomplete="new-password"></label>
+          <button class="btn btn-primary" type="submit">Save settings</button>
+          <p id="settings-msg" class="muted"></p>
+        </form>
+      </div>
+      <div class="card narrow">
+        <h2>How alerts work</h2>
+        <ul class="muted">
+          <li>Each item has reminder stages (e.g. <code>30,7,1</code> days before). An alert is raised once per stage, plus on the day and when overdue.</li>
+          <li>The server checks automatically every few hours. You can also trigger a check from the dashboard.</li>
+          <li>Passports default to reminders at 270, 180 and 90 days because many countries require six months of remaining validity.</li>
+          <li>Export your renewals to your calendar app with the <em>.ics</em> button on the Items page.</li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <!-- Item modal -->
+  <div id="modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h2 id="modal-title">Add item</h2>
+        <button class="btn btn-ghost btn-sm" data-action="close-modal" aria-label="Close">✕</button>
+      </div>
+      <form id="item-form" class="form">
+        <input type="hidden" name="id">
+        <div class="row">
+          <label class="grow">Name <input name="name" required placeholder="e.g. Netflix, Car insurance, Passport – Alex"></label>
+          <label>Category <select name="category" id="item-category"></select></label>
+        </div>
+        <div class="row">
+          <label class="grow">Provider <input name="provider" placeholder="e.g. Aviva, British Gas, HM Passport Office"></label>
+          <label>Reference / policy no. <input name="reference"></label>
+        </div>
+        <div class="row">
+          <label>Amount <input name="amount" type="number" step="0.01" min="0" placeholder="0.00"></label>
+          <label>Currency <input name="currency" maxlength="3" value="GBP" style="width:5rem"></label>
+          <label class="grow">Renewal / expiry date <input name="renewal_date" type="date" required></label>
+        </div>
+        <div class="row">
+          <label>Repeats <select name="recurrence" id="item-recurrence"></select></label>
+          <label id="interval-row" class="hidden">Every (days) <input name="interval_days" type="number" min="1"></label>
+          <label class="grow">Remind me (days before, comma-separated) <input name="reminder_days" placeholder="30,7,1"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="auto_renews"> Renews automatically (money will be taken unless cancelled)</label>
+        <label>Notes <textarea name="notes" rows="3"></textarea></label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-action="close-modal">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="item-save">Save</button>
+        </div>
+        <p id="item-error" class="error"></p>
+      </form>
+    </div>
+  </div>
+
+  <!-- Renew modal -->
+  <div id="renew-modal" class="modal hidden" role="dialog" aria-modal="true">
+    <div class="modal-card small">
+      <div class="modal-header">
+        <h2>Mark as renewed</h2>
+        <button class="btn btn-ghost btn-sm" data-action="close-renew" aria-label="Close">✕</button>
+      </div>
+      <form id="renew-form" class="form">
+        <input type="hidden" name="id">
+        <p id="renew-summary" class="muted"></p>
+        <label>New renewal / expiry date <input name="new_date" type="date"></label>
+        <label>New amount (optional) <input name="amount" type="number" step="0.01" min="0"></label>
+        <div class="modal-actions">
+          <button type="button" class="btn btn-ghost" data-action="close-renew">Cancel</button>
+          <button type="submit" class="btn btn-primary">Confirm renewal</button>
+        </div>
+        <p id="renew-error" class="error"></p>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>
