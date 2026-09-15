@@ -1,0 +1,13 @@
+.git
+.venv
+venv
+instance
+build
+dist
+__pycache__
+*.pyc
+.pytest_cache
+tests
+*.db
+.env
+chrome-profile

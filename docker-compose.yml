@@ -1,0 +1,22 @@
+services:
+  renewaltracker:
+    build: .
+    image: renewaltracker:latest
+    container_name: renewaltracker
+    ports:
+      - "5000:5000"
+    volumes:
+      - renewaltracker-data:/data
+    environment:
+      # Optional. Leave SMTP unset to keep alerts in-app + browser push only.
+      # SECRET_KEY: change-me-to-a-long-random-string
+      # SMTP_HOST: smtp.example.com
+      # SMTP_USERNAME: you@example.com
+      # SMTP_PASSWORD: yourpassword
+      # MAIL_FROM: renewals@example.com
+      # DATE_DAY_FIRST: "true"
+      VAPID_SUBJECT: mailto:renewaltracker@localhost
+    restart: unless-stopped
+
+volumes:
+  renewaltracker-data:

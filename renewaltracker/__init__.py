@@ -14,12 +14,21 @@ __version__ = "0.1.0"
 
 
 def create_app(config_object: type | object | None = None) -> Flask:
-    app = Flask(__name__, static_folder="static", static_url_path="/static", instance_relative_config=True)
+    from .paths import default_instance_path, static_dir
+
+    app = Flask(
+        __name__,
+        static_folder=static_dir(),
+        static_url_path="/static",
+        instance_path=default_instance_path(),
+        instance_relative_config=True,
+    )
     app.config.from_object(config_object or Config)
     os.makedirs(app.instance_path, exist_ok=True)
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
+    _init_secret_key(app)
     db.init_app(app)
 
     from . import api, auth, imports, push_api
@@ -73,6 +82,34 @@ def create_app(config_object: type | object | None = None) -> Flask:
             click.echo(f"  - {alert.message}")
 
     return app
+
+
+def _init_secret_key(app: Flask) -> None:
+    """Replace the insecure default SECRET_KEY with one persisted in the instance folder.
+
+    Packaged and casual users rarely set SECRET_KEY; without a stable random
+    key, sessions would either be forgeable (fixed default) or reset on every
+    restart (random each run). Tests keep whatever their config says.
+    """
+    if app.config.get("TESTING") or app.config.get("SECRET_KEY") != Config.SECRET_KEY:
+        return
+    path = os.path.join(app.instance_path, "secret_key")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            key = fh.read().strip()
+    except FileNotFoundError:
+        key = ""
+    if len(key) < 32:
+        import secrets
+
+        key = secrets.token_hex(32)
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(key)
+        try:
+            os.chmod(path, 0o600)
+        except OSError:  # pragma: no cover - e.g. Windows
+            pass
+    app.config["SECRET_KEY"] = key
 
 
 def _init_push(app: Flask) -> None:

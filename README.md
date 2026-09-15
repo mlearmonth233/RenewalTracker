@@ -29,22 +29,65 @@ number and billing frequency for you to review and confirm.
 
 ## Quick start
 
+Pick whichever suits you. In every case the app opens in your browser at <http://localhost:5000>; create an
+account and start adding items.
+
+### Option 1 – Standalone app (no Python needed)
+
+Download the build for your system from the **Releases** page (or the *Build* workflow artifacts), unzip, and run
+`RenewalTracker.exe` (Windows) or `./RenewalTracker` (macOS / Linux). A small console window shows the address
+and closing it (or Ctrl+C) stops the app. Your data is stored in your user profile:
+
+| System | Data folder |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\RenewalTracker` |
+| macOS | `~/Library/Application Support/RenewalTracker` |
+| Linux | `~/.local/share/renewaltracker` |
+
+macOS may block an unsigned download the first time: right-click → *Open*, or run
+`xattr -d com.apple.quarantine RenewalTracker` once.
+
+To build it yourself: `pip install -r requirements.txt -r requirements-build.txt && python build_exe.py`
+(build on the OS you want to run it on).
+
+### Option 2 – Double-click launcher (Python 3.11+ installed)
+
+Clone or download the repository, then double-click **`start.bat`** (Windows) or **`start.command`** (macOS),
+or run `./start.sh` (Linux). The first run creates a private virtual environment and installs dependencies;
+later runs start instantly. Any arguments are passed to `run.py`, e.g. `./start.sh --port 8080`.
+
+### Option 3 – Docker
+
+```bash
+docker compose up -d
+```
+
+Then open <http://localhost:5000>. Data persists in the `renewaltracker-data` volume. Uncomment the environment
+variables in `docker-compose.yml` to set a `SECRET_KEY` or enable e-mail digests. Without Docker Compose:
+
+```bash
+docker build -t renewaltracker .
+docker run -d --name renewaltracker -p 5000:5000 -v renewaltracker-data:/data renewaltracker
+```
+
+### Option 4 – From source
+
 ```bash
 python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 python run.py
 ```
 
-The app opens in your default browser at <http://localhost:5000> as soon as the server is ready. Create an
-account and start adding items. Use `python run.py --no-browser` (or `OPEN_BROWSER=0`) to skip the auto-open,
-for example on a headless server.
+`run.py` accepts `--port`, `--host`, `--no-browser`, `--data-dir` and `--debug`. Use `--no-browser`
+(or `OPEN_BROWSER=0`) on a headless server.
 
 ### Configuration (environment variables)
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
-| `SECRET_KEY` | `dev-change-me` | Flask session signing key. **Set this in production.** |
-| `DATABASE_URL` | `sqlite:///renewaltracker.db` | Any SQLAlchemy URL. The SQLite file lives in `instance/`. |
+| `SECRET_KEY` | auto-generated | Flask session signing key. If unset, a random key is generated once and stored in the data folder. Set it explicitly when running several instances behind a load balancer. |
+| `DATABASE_URL` | `sqlite:///renewaltracker.db` | Any SQLAlchemy URL. A relative SQLite file lives in the data folder. |
+| `RENEWALTRACKER_DATA_DIR` | `instance/` from source, user profile when packaged | Folder for the database, secret key and push keys. `run.py --data-dir` sets the same thing. |
 | `DATE_DAY_FIRST` | `true` | How to read ambiguous dates like `03/04/2026` in e-mails (`true` = day/month, `false` = month/day). |
 | `CHECK_INTERVAL_HOURS` | `6` | How often the background scheduler checks for renewals. |
 | `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | unset | Enable e-mail digests. Leave `SMTP_HOST` unset to keep alerts in-app and push only. |
@@ -126,8 +169,13 @@ renewaltracker/
   alerts.py        staged alert engine + e-mail / push dispatch
   webpush.py       Web Push encryption (RFC 8291) + VAPID (RFC 8292)
   scheduler.py     background renewal checker
+  paths.py         data folder / static folder resolution (source vs packaged)
   auth.py, api.py, imports.py, push_api.py   JSON blueprints
   static/          single-page front end (no build step) + sw.js service worker
 tests/             pytest suite
-run.py             dev server entry point
+run.py             launcher (CLI flags, auto-open browser, scheduler)
+start.sh / start.command / start.bat   one-click launchers
+renewaltracker.spec, build_exe.py      PyInstaller standalone build
+Dockerfile, docker-compose.yml         container deployment
+.github/workflows/build.yml            tests + executables for Windows/macOS/Linux
 ```

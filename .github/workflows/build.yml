@@ -1,0 +1,96 @@
+name: Build
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  test:
+    name: Tests (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+  build:
+    name: Executable (${{ matrix.os }})
+    needs: test
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: RenewalTracker-windows-x64
+            binary: dist/RenewalTracker.exe
+          - os: macos-latest
+            artifact: RenewalTracker-macos-arm64
+            binary: dist/RenewalTracker
+          - os: macos-13
+            artifact: RenewalTracker-macos-intel
+            binary: dist/RenewalTracker
+          - os: ubuntu-latest
+            artifact: RenewalTracker-linux-x64
+            binary: dist/RenewalTracker
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt -r requirements-build.txt
+      - run: python build_exe.py
+      - name: Smoke-test the executable
+        shell: bash
+        run: |
+          "${{ matrix.binary }}" --no-browser --port 5099 --data-dir "$RUNNER_TEMP/rtdata" &
+          PID=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:5099/health; then echo; break; fi
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:5099/ | grep -q RenewalTracker
+          kill $PID
+      - name: Package
+        shell: bash
+        run: |
+          mkdir -p out
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            7z a "out/${{ matrix.artifact }}.zip" "./${{ matrix.binary }}" README.md
+          else
+            chmod +x "${{ matrix.binary }}"
+            tar -C dist -czf "out/${{ matrix.artifact }}.tar.gz" "$(basename "${{ matrix.binary }}")" -C .. README.md
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: out/*
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
