@@ -14,10 +14,15 @@
     view: "dashboard",
   };
 
-  const ICONS = { bill: "🧾", subscription: "🔁", insurance: "🛡️", passport: "🛂", other: "📌" };
+  const CATEGORY_ICON = { bill: "receipt", subscription: "repeat", insurance: "shield", passport: "passport", other: "pin" };
   const CURRENCY = { GBP: "£", USD: "$", EUR: "€" };
+  const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
   // ------------------------------------------------------------------ utils
+  function icon(name, cls = "") {
+    return `<svg class="i ${cls}" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+  }
+
   async function api(path, options = {}) {
     const opts = { credentials: "same-origin", headers: {}, ...options };
     if (opts.body && !(opts.body instanceof FormData)) {
@@ -42,11 +47,11 @@
 
   function toast(message, isError = false) {
     const el = $("#toast");
-    el.textContent = message;
+    el.innerHTML = `${icon(isError ? "alert" : "check-circle")}<span>${esc(message)}</span>`;
     el.classList.toggle("error", isError);
     el.classList.remove("hidden");
     clearTimeout(toast._t);
-    toast._t = setTimeout(() => el.classList.add("hidden"), 3500);
+    toast._t = setTimeout(() => el.classList.add("hidden"), 4000);
   }
 
   function esc(s) {
@@ -66,9 +71,15 @@
     return d.toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
   }
 
+  function dateChip(iso, catClass) {
+    const d = new Date(iso + "T00:00:00");
+    const showYear = d.getFullYear() !== new Date().getFullYear();
+    return `<div class="date-chip ${catClass}" title="${esc(fmtDate(iso))}"><span class="m">${MONTHS[d.getMonth()]}</span><span class="d">${d.getDate()}</span>${showYear ? `<span class="y">${d.getFullYear()}</span>` : ""}</div>`;
+  }
+
   function whenText(days) {
     if (days < 0) return `${-days} day${days === -1 ? "" : "s"} overdue`;
-    if (days === 0) return "Today";
+    if (days === 0) return "Due today";
     if (days === 1) return "Tomorrow";
     if (days < 60) return `in ${days} days`;
     if (days < 365) {
@@ -78,6 +89,20 @@
     const years = Math.floor(days / 365);
     const remMonths = Math.round((days - years * 365) / 30);
     return `in ${years} yr${years === 1 ? "" : "s"}${remMonths ? ` ${remMonths} mo` : ""}`;
+  }
+
+  function whenClass(status) {
+    if (status === "overdue" || status === "due_today") return "critical";
+    if (status === "upcoming") return "warning";
+    return "";
+  }
+
+  function statusLabel(status) {
+    return { overdue: "Overdue", due_today: "Due today", upcoming: "Due soon", ok: "On track", archived: "Archived" }[status] || status;
+  }
+
+  function statusIcon(status) {
+    return { overdue: "alert", due_today: "alert", upcoming: "clock", ok: "check", archived: "archive" }[status] || "check";
   }
 
   function categoryLabel(key) {
@@ -92,27 +117,53 @@
     return data;
   }
 
+  function emptyState(iconName, title, text, cta) {
+    return `<div class="empty">${icon(iconName)}<strong>${esc(title)}</strong><p>${esc(text)}</p>${cta || ""}</div>`;
+  }
+
+  // ------------------------------------------------------------------ theme
+  function applyTheme(theme) {
+    if (theme === "light" || theme === "dark") document.documentElement.setAttribute("data-theme", theme);
+    else document.documentElement.removeAttribute("data-theme");
+    const dark = theme === "dark" || (!theme && window.matchMedia("(prefers-color-scheme: dark)").matches);
+    $$("#theme-toggle use, #theme-toggle-m use").forEach((u) => u.setAttribute("href", dark ? "#i-sun" : "#i-moon"));
+  }
+
+  function toggleTheme() {
+    const current = document.documentElement.getAttribute("data-theme");
+    const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const isDark = current === "dark" || (!current && systemDark);
+    const next = isDark ? "light" : "dark";
+    try { localStorage.setItem("rt-theme", next); } catch (_) { /* ignore */ }
+    applyTheme(next);
+  }
+
+  try { applyTheme(localStorage.getItem("rt-theme")); } catch (_) { applyTheme(null); }
+  $("#theme-toggle").addEventListener("click", toggleTheme);
+  $("#theme-toggle-m").addEventListener("click", toggleTheme);
+
   // ------------------------------------------------------------------ views
   function showView(name) {
     state.view = name;
-    $$(".view").forEach((v) => v.classList.add("hidden"));
+    $$("#app .view").forEach((v) => v.classList.add("hidden"));
     $(`#view-${name}`).classList.remove("hidden");
     $$(".nav-btn").forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+    closeMenus();
+    window.scrollTo({ top: 0 });
     const loaders = { dashboard: loadDashboard, items: loadItems, alerts: loadAlerts, import: loadImports, settings: loadSettings };
-    if (loaders[name]) loaders[name]();
+    if (loaders[name]) loaders[name]().catch((err) => toast(err.message, true));
   }
 
   function showAuth() {
-    $$(".view").forEach((v) => v.classList.add("hidden"));
+    $("#shell").classList.add("hidden");
     $("#view-auth").classList.remove("hidden");
-    $("#nav").classList.add("hidden");
-    $("#user-box").classList.add("hidden");
   }
 
   function showApp() {
-    $("#nav").classList.remove("hidden");
-    $("#user-box").classList.remove("hidden");
+    $("#view-auth").classList.add("hidden");
+    $("#shell").classList.remove("hidden");
     $("#user-name").textContent = state.user.username;
+    $("#user-avatar").textContent = (state.user.username || "?").charAt(0).toUpperCase();
     showView("dashboard");
     refreshBadge();
     initPush();
@@ -128,6 +179,12 @@
     } catch (_) { /* ignore */ }
   }
 
+  $$(".nav-btn").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+  document.addEventListener("click", (e) => {
+    const link = e.target.closest("[data-view-link]");
+    if (link) { e.preventDefault(); showView(link.dataset.viewLink); }
+  });
+
   // ------------------------------------------------------------------ auth
   let authMode = "login";
   $$(".tab[data-auth]").forEach((tab) => tab.addEventListener("click", () => {
@@ -135,7 +192,10 @@
     $$(".tab[data-auth]").forEach((t) => t.classList.toggle("active", t === tab));
     $("#auth-email-row").classList.toggle("hidden", authMode !== "register");
     $("#auth-submit").textContent = authMode === "login" ? "Log in" : "Create account";
+    $("#auth-title").textContent = authMode === "login" ? "Welcome back" : "Create your account";
+    $("#auth-sub").textContent = authMode === "login" ? "Log in to see what's coming up." : "Takes ten seconds. No e-mail required.";
     $("#auth-error").textContent = "";
+    $("#auth-form input[name=password]").setAttribute("autocomplete", authMode === "login" ? "current-password" : "new-password");
   }));
 
   $("#auth-form").addEventListener("submit", async (e) => {
@@ -151,45 +211,86 @@
     }
   });
 
-  $("#logout-btn").addEventListener("click", async () => {
+  async function logout() {
     await api("/api/auth/logout", { method: "POST" });
     state.user = null;
     showAuth();
-  });
-
-  $$(".nav-btn").forEach((b) => b.addEventListener("click", () => showView(b.dataset.view)));
+  }
+  $("#logout-btn").addEventListener("click", logout);
+  $("#logout-btn-m").addEventListener("click", logout);
 
   // ------------------------------------------------------------------ dashboard
   async function loadDashboard() {
-    const data = await api("/api/dashboard");
+    const [data, alerts] = await Promise.all([api("/api/dashboard"), api("/api/alerts")]);
     const t = data.totals;
+    const b = data.buckets;
+
+    const soon = [...b.overdue, ...b.due_today, ...b.next_7_days, ...b.next_30_days];
+    $("#dash-sub").textContent = t.items === 0
+      ? "Add your first item or import an e-mail to get started."
+      : `${t.items} item${t.items === 1 ? "" : "s"} tracked · ${soon.length} due in the next 30 days${t.overdue ? ` · ${t.overdue} overdue` : ""}`;
+
     $("#stats").innerHTML = `
-      <div class="stat"><div class="label">Tracked items</div><div class="value">${t.items}</div></div>
-      <div class="stat ${t.overdue ? "danger" : ""}"><div class="label">Overdue</div><div class="value">${t.overdue}</div></div>
-      <div class="stat ${t.due_within_30_days ? "warning" : ""}"><div class="label">Due in 30 days</div><div class="value">${t.due_within_30_days}</div></div>
-      <div class="stat"><div class="label">Spend next 30 days</div><div class="value">${esc(money(t.spend_next_30_days, "GBP"))}</div></div>
-      <div class="stat"><div class="label">Est. monthly cost</div><div class="value">${esc(money(t.estimated_monthly_spend, "GBP"))}</div></div>
+      <div class="stat"><div class="label">${icon("list")}Tracked</div><div class="value">${t.items}</div><div class="hint">active items</div></div>
+      <div class="stat ${t.overdue ? "critical" : ""}"><div class="label">${icon("alert")}Overdue</div><div class="value">${t.overdue}</div><div class="hint">${t.overdue ? "needs attention" : "nothing overdue"}</div></div>
+      <div class="stat ${t.due_within_30_days ? "warning" : ""}"><div class="label">${icon("clock")}Due in 30 days</div><div class="value">${t.due_within_30_days}</div><div class="hint">${esc(money(t.spend_next_30_days, "GBP"))} to pay</div></div>
+      <div class="stat"><div class="label">${icon("wallet")}Monthly cost</div><div class="value">${esc(money(t.estimated_monthly_spend, "GBP"))}</div><div class="hint">≈ ${esc(money(t.estimated_monthly_spend * 12, "GBP"))} a year</div></div>
     `;
-    const labels = {
-      overdue: "Overdue", due_today: "Due today", next_7_days: "Next 7 days",
-      next_30_days: "Next 30 days", next_90_days: "Next 90 days", later: "Later",
-    };
+
+    // Coming up: the next 8 items due, soonest first.
+    const upcoming = soon.length ? soon : b.next_90_days.slice(0, 5);
+    $("#dash-upcoming-sub").textContent = soon.length ? "next 30 days" : upcoming.length ? "next 90 days" : "";
+    const list = $("#dash-upcoming");
+    list.innerHTML = "";
+    if (!upcoming.length) {
+      list.innerHTML = t.items === 0
+        ? emptyState("calendar", "Nothing tracked yet", "Add a bill, subscription, insurance policy or passport, or import a confirmation e-mail.", `<button class="btn btn-primary" data-action="new-item">${icon("plus")}Add your first item</button>`)
+        : emptyState("check-circle", "You're all clear", "Nothing is due in the next 90 days.");
+      $$("[data-action=new-item]", list).forEach((btn) => btn.addEventListener("click", () => openItemModal(null)));
+    } else {
+      upcoming.slice(0, 8).forEach((item) => list.appendChild(renderItem(item, { compact: true })));
+    }
+
+    // Spend by category bar chart (monthly equivalent).
+    const chart = $("#dash-chart");
+    const rows = Object.entries(data.by_category)
+      .filter(([, v]) => v.count > 0 && v.monthly_equivalent > 0)
+      .sort((a, c) => c[1].monthly_equivalent - a[1].monthly_equivalent);
+    const max = Math.max(1, ...rows.map(([, v]) => v.monthly_equivalent));
+    chart.innerHTML = rows.length
+      ? rows.map(([key, v]) => `
+        <div class="bar-row cat-${key}" title="${esc(categoryLabel(key))}: ${esc(money(v.monthly_equivalent, "GBP"))} per month across ${v.count} item${v.count === 1 ? "" : "s"}">
+          <div class="lbl"><span class="tag"><span class="dot"></span>${esc(categoryLabel(key))}</span></div>
+          <div class="track"><div class="fill" style="width:${Math.max(2, (v.monthly_equivalent / max) * 100)}%"></div></div>
+          <div class="val">${esc(money(v.monthly_equivalent, "GBP"))}<small>${v.count}</small></div>
+        </div>`).join("")
+      : `<p class="muted">Add items with amounts to see where the money goes.</p>`;
+
+    // Recent alerts.
+    // One line per item (the most urgent stage), unread first.
+    const seen = new Set();
+    const recent = alerts.alerts.filter((a) => !seen.has(a.item_id) && seen.add(a.item_id)).slice(0, 5);
+    $("#dash-alerts").innerHTML = recent.length
+      ? recent.map((a) => `<div class="mini-row"><span class="pill ${a.kind === "upcoming" ? "upcoming" : "overdue"}">${icon(a.kind === "upcoming" ? "clock" : "alert")}${a.kind === "upcoming" ? "soon" : a.kind === "overdue" ? "overdue" : "today"}</span><span class="txt" title="${esc(a.message)}">${esc(a.item_name || "")}</span><span class="when">${esc(fmtDate(a.renewal_date))}</span></div>`).join("")
+      : `<p class="muted">No alerts yet.</p>`;
+
+    // Everything else, grouped.
+    const later = [...b.next_90_days, ...b.later].filter((i) => !upcoming.includes(i));
     const container = $("#dash-buckets");
     container.innerHTML = "";
-    let any = false;
-    Object.entries(labels).forEach(([key, label]) => {
-      const items = data.buckets[key];
-      if (!items.length) return;
-      any = true;
-      const section = document.createElement("div");
-      section.className = "bucket";
-      section.innerHTML = `<h2>${label} <span class="count">(${items.length})</span></h2><div class="item-list"></div>`;
-      const list = $(".item-list", section);
-      items.forEach((item) => list.appendChild(renderItem(item)));
-      container.appendChild(section);
-    });
-    if (!any) {
-      container.innerHTML = `<div class="empty">Nothing tracked yet. Add your first bill, subscription, insurance policy or passport, or import an e-mail confirmation.</div>`;
+    if (later.length) {
+      const groups = [["Next 90 days", b.next_90_days.filter((i) => !upcoming.includes(i))], ["Later", b.later]];
+      groups.forEach(([label, items]) => {
+        if (!items.length) return;
+        const head = document.createElement("div");
+        head.className = "section-head";
+        head.innerHTML = `<h2>${label}</h2><span class="count">${items.length}</span><span class="rule"></span>`;
+        const wrap = document.createElement("div");
+        wrap.className = "item-list";
+        items.forEach((item) => wrap.appendChild(renderItem(item)));
+        container.appendChild(head);
+        container.appendChild(wrap);
+      });
     }
   }
 
@@ -199,42 +300,68 @@
   async function runCheck() {
     try {
       const data = await api("/api/alerts/check", { method: "POST" });
-      toast(data.created ? `${data.created} new alert${data.created === 1 ? "" : "s"} raised.` : "No new alerts – you're up to date.");
+      toast(data.created ? `${data.created} new alert${data.created === 1 ? "" : "s"} raised.` : "No new alerts. You're up to date.");
       refreshBadge();
-      if (state.view === "alerts") loadAlerts();
+      reloadCurrent();
     } catch (err) { toast(err.message, true); }
   }
 
   // ------------------------------------------------------------------ items
+  function closeMenus() {
+    $$(".menu").forEach((m) => m.remove());
+  }
+  document.addEventListener("click", (e) => {
+    if (!e.target.closest(".menu-wrap")) closeMenus();
+  });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") closeMenus(); });
+
   function renderItem(item, { compact = false } = {}) {
     const el = document.createElement("div");
-    el.className = `item status-${item.status}`;
-    const pills = [`<span class="pill ${item.status}">${item.status.replace("_", " ")}</span>`];
-    if (item.auto_renews) pills.push(`<span class="pill auto">auto-renews</span>`);
-    if (item.source === "email") pills.push(`<span class="pill email">from e-mail</span>`);
-    const meta = [categoryLabel(item.category)];
-    if (item.provider) meta.push(esc(item.provider));
-    if (item.reference) meta.push(`Ref ${esc(item.reference)}`);
-    if (item.recurrence !== "none") meta.push(item.recurrence === "custom" ? `every ${item.interval_days} days` : item.recurrence);
+    const catClass = `cat-${item.category}`;
+    el.className = `item status-${item.status} ${catClass}`;
+    const meta = [`<span class="tag"><span class="dot"></span>${esc(categoryLabel(item.category))}</span>`];
+    if (item.provider) meta.push(`<span>${esc(item.provider)}</span>`);
+    if (item.reference && !compact) meta.push(`<span>Ref ${esc(item.reference)}</span>`);
+    if (item.recurrence !== "none" && !compact) meta.push(`<span>${item.recurrence === "custom" ? `every ${item.interval_days} days` : esc(item.recurrence)}</span>`);
+    if (item.auto_renews) meta.push(`<span class="pill auto">${icon("repeat")}auto-renews</span>`);
+    if (item.source === "email") meta.push(`<span class="pill email">${icon("mail")}from e-mail</span>`);
+
     el.innerHTML = `
-      <div class="icon">${ICONS[item.category] || ICONS.other}</div>
-      <div>
-        <div class="title">${esc(item.name)} ${pills.join(" ")}</div>
-        <div class="meta">${meta.join(" · ")}</div>
+      ${dateChip(item.renewal_date, catClass)}
+      <div class="body">
+        <div class="title"><span class="name">${esc(item.name)}</span><span class="pill ${item.status}">${icon(statusIcon(item.status))}${statusLabel(item.status)}</span></div>
+        <div class="meta">${meta.join('<span class="sep"></span>')}</div>
       </div>
       <div class="right">
         <div class="amount">${esc(money(item.amount, item.currency))}</div>
-        <div class="when">${fmtDate(item.renewal_date)} · ${whenText(item.days_until_renewal)}</div>
-        <div class="item-actions">
-          ${item.archived ? "" : `<button class="btn btn-sm" data-act="renew">Renewed</button>`}
-          <button class="btn btn-sm btn-ghost" data-act="edit">Edit</button>
-          <button class="btn btn-sm btn-ghost" data-act="archive">${item.archived ? "Restore" : "Archive"}</button>
-          <button class="btn btn-sm btn-ghost btn-danger" data-act="delete">Delete</button>
-        </div>
+        <div class="when ${whenClass(item.status)}">${esc(whenText(item.days_until_renewal))}</div>
+      </div>
+      <div class="item-actions">
+        ${item.archived ? "" : `<button class="btn btn-sm" data-act="renew" title="Mark as paid / renewed">${icon("check")}Renewed</button>`}
+        ${compact ? "" : `<div class="menu-wrap"><button class="icon-btn" data-act="menu" aria-label="More actions">${icon("more")}</button></div>`}
       </div>`;
+
     el.addEventListener("click", async (e) => {
-      const act = e.target.dataset.act;
-      if (!act) return;
+      const btn = e.target.closest("[data-act]");
+      if (!btn) return;
+      const act = btn.dataset.act;
+      if (act === "menu") {
+        e.stopPropagation();
+        const wrap = btn.parentElement;
+        const open = $(".menu", wrap);
+        closeMenus();
+        if (open) return;
+        const menu = document.createElement("div");
+        menu.className = "menu";
+        menu.innerHTML = `
+          <button data-act="edit">${icon("edit")}Edit</button>
+          <button data-act="archive">${icon("archive")}${item.archived ? "Restore" : "Archive"}</button>
+          <hr>
+          <button data-act="delete" class="danger">${icon("trash")}Delete</button>`;
+        wrap.appendChild(menu);
+        return;
+      }
+      closeMenus();
       if (act === "edit") openItemModal(item);
       if (act === "renew") openRenewModal(item);
       if (act === "archive") {
@@ -268,8 +395,12 @@
     state.items = data.items;
     const list = $("#items-list");
     list.innerHTML = "";
+    $("#items-sub").textContent = `${data.items.length} item${data.items.length === 1 ? "" : "s"}${q || cat ? " match your filters" : ""}.`;
     if (!data.items.length) {
-      list.innerHTML = `<div class="empty">No items match. Try a different filter or add a new item.</div>`;
+      list.innerHTML = q || cat
+        ? emptyState("search", "No matches", "Try a different search or category.")
+        : emptyState("calendar", "Nothing tracked yet", "Add a bill, subscription, insurance policy or passport, or import a confirmation e-mail.", `<button class="btn btn-primary" data-action="new-item">${icon("plus")}Add your first item</button>`);
+      $$("[data-action=new-item]", list).forEach((btn) => btn.addEventListener("click", () => openItemModal(null)));
       return;
     }
     data.items.forEach((item) => list.appendChild(renderItem(item)));
@@ -354,6 +485,7 @@
 
   // ------------------------------------------------------------------ renew modal
   $$("[data-action=close-renew]").forEach((b) => b.addEventListener("click", () => $("#renew-modal").classList.add("hidden")));
+  $("#renew-modal").addEventListener("click", (e) => { if (e.target.id === "renew-modal") $("#renew-modal").classList.add("hidden"); });
 
   function openRenewModal(item) {
     const form = $("#renew-form");
@@ -391,16 +523,17 @@
     const list = $("#alerts-list");
     list.innerHTML = "";
     if (!data.alerts.length) {
-      list.innerHTML = `<div class="empty">No alerts yet. Alerts appear here when an item enters its reminder window.</div>`;
+      list.innerHTML = emptyState("bell", "No alerts yet", "Alerts appear here when an item enters its reminder window, on the due date, and when something is overdue.");
       return;
     }
     data.alerts.forEach((a) => {
       const row = document.createElement("div");
       row.className = `alert-row kind-${a.kind} ${a.acknowledged ? "read" : ""}`;
+      const channels = [a.pushed_at ? "pushed" : null, a.emailed_at ? "e-mailed" : null].filter(Boolean).join(", ");
       row.innerHTML = `
-        <div class="dot"></div>
-        <div class="msg">${esc(a.message)}<div class="sub">${esc(categoryLabel(a.category))} · raised ${new Date(a.created_at).toLocaleString()}${a.emailed_at ? " · e-mailed" : ""}</div></div>
-        ${a.acknowledged ? "" : `<button class="btn btn-sm">Mark read</button>`}`;
+        <div class="ico">${icon(a.kind === "upcoming" ? "clock" : "alert")}</div>
+        <div><div class="msg">${esc(a.message)}</div><div class="sub">${esc(categoryLabel(a.category))} · raised ${new Date(a.created_at).toLocaleString()}${channels ? " · " + channels : ""}</div></div>
+        ${a.acknowledged ? `<span class="pill">${icon("check")}read</span>` : `<button class="btn btn-sm">Mark read</button>`}`;
       const btn = $("button", row);
       if (btn) btn.addEventListener("click", async () => {
         await api(`/api/alerts/${a.id}/ack`, { method: "POST" });
@@ -418,6 +551,20 @@
   });
 
   // ------------------------------------------------------------------ import
+  const dropzone = $("#dropzone");
+  const fileInput = $("#import-file-form input[type=file]");
+  fileInput.addEventListener("change", () => {
+    $("#dropzone-name").textContent = fileInput.files[0] ? fileInput.files[0].name : "";
+  });
+  ["dragenter", "dragover"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach((ev) => dropzone.addEventListener(ev, (e) => { e.preventDefault(); dropzone.classList.remove("drag"); }));
+  dropzone.addEventListener("drop", (e) => {
+    if (e.dataTransfer.files.length) {
+      fileInput.files = e.dataTransfer.files;
+      $("#dropzone-name").textContent = fileInput.files[0].name;
+    }
+  });
+
   $("#import-file-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
@@ -448,13 +595,14 @@
     const p = record.parsed;
     const box = $("#import-review");
     const catOptions = state.categories.map((c) => `<option value="${c.key}" ${c.key === p.category ? "selected" : ""}>${esc(c.label)}</option>`).join("");
-    const recOptions = state.recurrences.map((r) => `<option value="${r}" ${r === p.recurrence ? "selected" : ""}>${r}</option>`).join("");
+    const recOptions = state.recurrences.map((r) => `<option value="${r}" ${r === p.recurrence ? "selected" : ""}>${r === "none" ? "Does not repeat" : r}</option>`).join("");
     const candidates = (p.date_candidates || []).map((c) =>
-      `<button type="button" data-date="${c.date}" class="${c.date === p.renewal_date ? "selected" : ""}" title="score ${c.score}">${esc(fmtDate(c.date))} <small>(“${esc(c.text)}”)</small></button>`
+      `<button type="button" data-date="${c.date}" class="${c.date === p.renewal_date ? "selected" : ""}" title="found as “${esc(c.text)}”">${esc(fmtDate(c.date))}</button>`
     ).join("");
+    const pct = Math.round((p.confidence || 0) * 100);
     box.innerHTML = `
-      ${p.warnings && p.warnings.length ? `<div class="warnings">${p.warnings.map(esc).join("<br>")}</div>` : ""}
-      <div class="confidence">Confidence ${(p.confidence * 100).toFixed(0)}% · ${record.subject ? `Subject: “${esc(record.subject)}”` : "No subject detected"}${record.sender ? ` · From: ${esc(record.sender)}` : ""}</div>
+      ${p.warnings && p.warnings.length ? `<div class="callout">${icon("alert")}<div>${p.warnings.map(esc).join("<br>")}</div></div>` : ""}
+      <div class="confidence"><span class="meter"><span style="width:${pct}%"></span></span><span>${pct}% confidence</span>${record.subject ? `<span>· “${esc(record.subject)}”</span>` : ""}${record.sender ? `<span>· from ${esc(record.sender)}</span>` : ""}</div>
       <form id="review-form" class="form">
         <div class="row">
           <label class="grow">Name <input name="name" value="${esc(p.name || "")}" required></label>
@@ -466,10 +614,10 @@
         </div>
         <div class="row">
           <label>Amount <input name="amount" type="number" step="0.01" min="0" value="${p.amount ?? ""}"></label>
-          <label>Currency <input name="currency" maxlength="3" value="${esc(p.currency || "GBP")}" style="width:5rem"></label>
+          <label style="flex:0 0 6rem">Currency <input name="currency" maxlength="3" value="${esc(p.currency || "GBP")}"></label>
           <label class="grow">Renewal / expiry date <input name="renewal_date" type="date" value="${p.renewal_date || ""}" required></label>
         </div>
-        ${candidates ? `<div class="candidates">Other dates found in the e-mail: ${candidates}</div>` : ""}
+        ${candidates ? `<div class="candidates"><span>Dates found in the e-mail:</span>${candidates}</div>` : ""}
         <div class="row">
           <label>Repeats <select name="recurrence">${recOptions}</select></label>
           <label class="grow">Remind me (days before) <input name="reminder_days" value="${esc(p.reminder_days || "")}"></label>
@@ -477,11 +625,11 @@
         <label class="check"><input type="checkbox" name="auto_renews" ${p.auto_renews ? "checked" : ""}> Renews automatically</label>
         <div class="modal-actions">
           <button type="button" class="btn btn-ghost" id="review-discard">Discard</button>
-          <button type="submit" class="btn btn-primary">Add to tracker</button>
+          <button type="submit" class="btn btn-primary">${icon("plus")}Add to tracker</button>
         </div>
         <p id="review-error" class="error"></p>
       </form>
-      <details><summary class="muted">Show extracted e-mail text</summary><div class="excerpt">${esc(record.raw_excerpt || "")}</div></details>`;
+      <details><summary>Show extracted e-mail text</summary><div class="excerpt">${esc(record.raw_excerpt || "")}</div></details>`;
 
     $$(".candidates button", box).forEach((b) => b.addEventListener("click", () => {
       $("#review-form").renewal_date.value = b.dataset.date;
@@ -490,7 +638,7 @@
 
     $("#review-discard").addEventListener("click", async () => {
       await api(`/api/imports/${record.id}/discard`, { method: "POST" });
-      box.innerHTML = `<p class="muted">Import discarded.</p>`;
+      box.innerHTML = `<div class="callout info">${icon("check")}<div>Import discarded.</div></div>`;
       loadImports();
     });
 
@@ -500,7 +648,7 @@
       if (data.amount === "") data.amount = null;
       try {
         const res = await api(`/api/imports/${record.id}/confirm`, { method: "POST", body: data });
-        box.innerHTML = `<p class="muted">✅ Added <strong>${esc(res.item.name)}</strong> – renews ${esc(fmtDate(res.item.renewal_date))}.</p>`;
+        box.innerHTML = `<div class="callout success">${icon("check-circle")}<div>Added <strong>${esc(res.item.name)}</strong>, renews ${esc(fmtDate(res.item.renewal_date))}.</div></div>`;
         toast("Item added from e-mail.");
         loadImports();
         refreshBadge();
@@ -515,20 +663,22 @@
     const list = $("#imports-list");
     list.innerHTML = "";
     if (!data.imports.length) {
-      list.innerHTML = `<div class="empty">No imports yet.</div>`;
+      list.innerHTML = emptyState("inbox", "No imports yet", "Parsed e-mails show up here so you can come back to one later.");
       return;
     }
     data.imports.forEach((rec) => {
       const p = rec.parsed || {};
       const row = document.createElement("div");
-      row.className = "item status-ok";
+      row.className = `item status-ok cat-${p.category || "other"}`;
+      const meta = [p.provider ? esc(p.provider) : null, p.renewal_date ? esc(fmtDate(p.renewal_date)) : null, p.amount != null ? esc(money(p.amount, p.currency)) : null, new Date(rec.created_at).toLocaleString()].filter(Boolean);
       row.innerHTML = `
-        <div class="icon">✉️</div>
-        <div>
-          <div class="title">${esc(rec.subject || p.name || rec.filename || "Pasted e-mail")} <span class="pill">${esc(rec.status)}</span></div>
-          <div class="meta">${esc(p.provider || "")} ${p.renewal_date ? "· " + esc(fmtDate(p.renewal_date)) : ""} ${p.amount != null ? "· " + esc(money(p.amount, p.currency)) : ""} · ${new Date(rec.created_at).toLocaleString()}</div>
+        <div class="cat-icon">${icon("mail")}</div>
+        <div class="body">
+          <div class="title"><span class="name">${esc(rec.subject || p.name || rec.filename || "Pasted e-mail")}</span><span class="pill ${rec.status === "confirmed" ? "ok" : rec.status === "discarded" ? "archived" : "upcoming"}">${esc(rec.status)}</span></div>
+          <div class="meta">${meta.map((m) => `<span>${m}</span>`).join('<span class="sep"></span>')}</div>
         </div>
-        <div class="right">${rec.status === "pending" ? `<button class="btn btn-sm">Review</button>` : ""}</div>`;
+        <div class="right"></div>
+        <div class="item-actions">${rec.status === "pending" ? `<button class="btn btn-sm">Review</button>` : ""}</div>`;
       const btn = $("button", row);
       if (btn) btn.addEventListener("click", () => { renderReview(rec); window.scrollTo({ top: 0, behavior: "smooth" }); });
       list.appendChild(row);
@@ -560,7 +710,6 @@
     try {
       push.registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       push.subscription = await push.registration.pushManager.getSubscription();
-      // Keep the server copy fresh (keys can rotate; account may have changed).
       if (push.subscription && state.user && Notification.permission === "granted") {
         await api("/api/push/subscribe", { method: "POST", body: { subscription: push.subscription.toJSON() } });
       }
@@ -593,7 +742,7 @@
       return;
     }
     if (push.subscription) {
-      status.innerHTML = `<span class="pill ok">enabled</span> This device will receive renewal alerts.`;
+      status.innerHTML = `<span class="pill ok">${icon("check")}enabled</span><span>This device will receive renewal alerts.</span>`;
       disableBtn.classList.remove("hidden");
       testBtn.classList.remove("hidden");
     } else {
@@ -638,14 +787,9 @@
       }
       if (!push.registration) push.registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
       await navigator.serviceWorker.ready;
-      // Subscribing contacts the browser vendor's push service; if that is
-      // unreachable the promise can hang, so give up after a while.
       const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("the browser's push service did not respond. Check your internet connection and try again.")), 20000));
       push.subscription = await Promise.race([
-        push.registration.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(push.publicKey),
-        }),
+        push.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(push.publicKey) }),
         timeout,
       ]);
       await api("/api/push/subscribe", { method: "POST", body: { subscription: push.subscription.toJSON() } });
@@ -679,21 +823,21 @@
   $("#push-test-btn").addEventListener("click", async () => {
     try {
       const res = await api("/api/push/test", { method: "POST", body: { endpoint: push.subscription ? push.subscription.endpoint : null } });
-      toast(res.sent ? "Test notification sent – it should appear in a moment." : "No notification was sent.", !res.sent);
+      toast(res.sent ? "Test notification sent. It should appear in a moment." : "No notification was sent.", !res.sent);
     } catch (err) {
       toast(err.message, true);
     }
   });
 
   // ------------------------------------------------------------------ settings
-  function loadSettings() {
+  async function loadSettings() {
     const form = $("#settings-form");
     form.email.value = state.user.email || "";
     form.notify_by_email.checked = !!state.user.notify_by_email;
     form.current_password.value = "";
     form.new_password.value = "";
     $("#settings-msg").textContent = "";
-    renderPushSettings();
+    await renderPushSettings();
   }
 
   $("#settings-form").addEventListener("submit", async (e) => {
@@ -703,8 +847,7 @@
     if (data.new_password) { body.new_password = data.new_password; body.current_password = data.current_password; }
     try {
       state.user = await api("/api/auth/me", { method: "PUT", body });
-      $("#settings-msg").textContent = "Settings saved.";
-      loadSettings();
+      await loadSettings();
       $("#settings-msg").textContent = "Settings saved.";
     } catch (err) {
       $("#settings-msg").textContent = err.message;
@@ -716,8 +859,7 @@
     const meta = await api("/api/categories");
     state.categories = meta.categories;
     state.recurrences = meta.recurrences;
-    const catSelects = [$("#item-category"), $("#items-category")];
-    catSelects.forEach((sel) => {
+    [$("#item-category"), $("#items-category")].forEach((sel) => {
       state.categories.forEach((c) => {
         const opt = document.createElement("option");
         opt.value = c.key;
