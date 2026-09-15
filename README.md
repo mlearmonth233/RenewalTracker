@@ -35,7 +35,9 @@ pip install -r requirements.txt
 python run.py
 ```
 
-Open <http://localhost:5000>, create an account and start adding items.
+The app opens in your default browser at <http://localhost:5000> as soon as the server is ready. Create an
+account and start adding items. Use `python run.py --no-browser` (or `OPEN_BROWSER=0`) to skip the auto-open,
+for example on a headless server.
 
 ### Configuration (environment variables)
 
@@ -50,6 +52,7 @@ Open <http://localhost:5000>, create an account and start adding items.
 | `VAPID_PRIVATE_KEY` | auto-generated | P-256 key that signs push messages, as base64url raw key or PEM. If unset, one is generated on first run and stored in `instance/vapid.json`. Keep it stable: changing it invalidates every device's subscription. |
 | `VAPID_SUBJECT` | `mailto:renewaltracker@localhost` | Contact for push services, a `mailto:` or `https://` URL. |
 | `HOST`, `PORT`, `FLASK_DEBUG` | `127.0.0.1`, `5000`, `0` | Server binding and debug mode for `run.py`. |
+| `OPEN_BROWSER` | `true` | Open the app in your browser when `run.py` starts. `python run.py --no-browser` does the same. |
 
 ### Running the renewal check from cron
 
