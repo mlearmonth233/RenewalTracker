@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: ["main"]
+    branches: ["main", "claude/**"]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -37,6 +37,9 @@ jobs:
         include:
           - os: windows-latest
             artifact: RenewalTracker-windows-x64
+            binary: dist/RenewalTracker.exe
+          - os: windows-11-arm
+            artifact: RenewalTracker-windows-arm64
             binary: dist/RenewalTracker.exe
           - os: macos-latest
             artifact: RenewalTracker-macos-arm64

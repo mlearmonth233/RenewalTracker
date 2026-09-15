@@ -44,6 +44,10 @@ and closing it (or Ctrl+C) stops the app. Your data is stored in your user profi
 | macOS | `~/Library/Application Support/RenewalTracker` |
 | Linux | `~/.local/share/renewaltracker` |
 
+Builds are provided for Windows (x64 and ARM64), macOS (Intel and Apple Silicon) and Linux x64. On Windows
+running in Parallels on an Apple Silicon Mac, pick the **windows-arm64** build (the x64 one also works, via
+Windows' built-in emulation, just a little slower).
+
 macOS may block an unsigned download the first time: right-click → *Open*, or run
 `xattr -d com.apple.quarantine RenewalTracker` once.
 
