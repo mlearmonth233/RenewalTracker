@@ -14,6 +14,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY renewaltracker ./renewaltracker
+COPY migrations ./migrations
 COPY run.py .
 
 RUN useradd --create-home --uid 1000 app && mkdir -p /data && chown -R app:app /data /app

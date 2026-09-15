@@ -16,14 +16,19 @@ here = os.path.abspath(os.getcwd())
 hidden = (
     collect_submodules("renewaltracker")
     + collect_submodules("sqlalchemy.dialects.sqlite")
-    + ["sqlalchemy.sql.default_comparator", "dateutil.relativedelta", "dateutil.parser"]
+    + collect_submodules("alembic")
+    + ["sqlalchemy.sql.default_comparator", "dateutil.relativedelta", "dateutil.parser", "flask_migrate", "logging.config"]
 )
 
 a = Analysis(
     ["run.py"],
     pathex=[here],
     binaries=[],
-    datas=[(os.path.join(here, "renewaltracker", "static"), os.path.join("renewaltracker", "static"))],
+    datas=[
+        (os.path.join(here, "renewaltracker", "static"), os.path.join("renewaltracker", "static")),
+        # Alembic migration scripts are loaded from disk at runtime.
+        (os.path.join(here, "migrations"), "migrations"),
+    ],
     hiddenimports=hidden,
     hookspath=[],
     hooksconfig={},

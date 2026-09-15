@@ -17,6 +17,10 @@ class Config:
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     MAX_CONTENT_LENGTH = 5 * 1024 * 1024  # 5 MB upload limit for .eml files
 
+    # Apply pending database migrations automatically on start-up so that
+    # launcher/executable users never need to run `flask db upgrade`.
+    AUTO_MIGRATE = _env_bool("AUTO_MIGRATE", True)
+
     # Dates such as 03/04/2026 are ambiguous. True reads them as day/month
     # (UK, EU, AU), False as month/day (US).
     DATE_DAY_FIRST = _env_bool("DATE_DAY_FIRST", True)
@@ -46,3 +50,6 @@ class TestConfig(Config):
     SQLALCHEMY_DATABASE_URI = "sqlite:///:memory:"
     DATE_DAY_FIRST = True
     SMTP_HOST = None
+    # Tests build the schema with create_all for speed; test_migrations.py
+    # separately proves the migrations produce the same schema.
+    AUTO_MIGRATE = False

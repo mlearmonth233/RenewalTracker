@@ -46,3 +46,10 @@ def static_dir() -> str:
     if is_frozen():
         return os.path.join(sys._MEIPASS, "renewaltracker", "static")  # type: ignore[attr-defined]
     return os.path.join(os.path.dirname(os.path.abspath(__file__)), "static")
+
+
+def migrations_dir() -> str:
+    """Absolute path of the Alembic migrations folder (repo root ``migrations/``)."""
+    if is_frozen():
+        return os.path.join(sys._MEIPASS, "migrations")  # type: ignore[attr-defined]
+    return os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "migrations")

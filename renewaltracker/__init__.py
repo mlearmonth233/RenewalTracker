@@ -31,6 +31,13 @@ def create_app(config_object: type | object | None = None) -> Flask:
     _init_secret_key(app)
     db.init_app(app)
 
+    from flask_migrate import Migrate
+
+    from .paths import migrations_dir
+
+    # render_as_batch makes ALTER TABLE work on SQLite (which lacks most of it).
+    Migrate(app, db, directory=migrations_dir(), render_as_batch=True)
+
     from . import api, auth, imports, push_api
 
     app.register_blueprint(auth.bp)
@@ -38,8 +45,11 @@ def create_app(config_object: type | object | None = None) -> Flask:
     app.register_blueprint(imports.bp)
     app.register_blueprint(push_api.bp)
 
-    with app.app_context():
-        db.create_all()
+    if app.config.get("AUTO_MIGRATE", True):
+        from .migrate import apply_migrations
+
+        with app.app_context():
+            apply_migrations()
 
     _init_push(app)
 

@@ -162,6 +162,25 @@ pip install -r requirements.txt
 pytest
 ```
 
+### Database migrations
+
+The schema is managed with Alembic via Flask-Migrate. **Pending migrations are applied automatically when the
+app starts**, so users of the launcher, the executable or Docker never run a migration command. Databases
+created before migrations existed are detected and stamped at the initial revision, then upgraded.
+
+When you change a model:
+
+```bash
+flask --app run db migrate -m "add snooze column"   # generates migrations/versions/<id>_add_snooze_column.py
+# review the generated file – Alembic can't detect everything (renames, data moves)
+flask --app run db upgrade                            # apply it now (or just start the app)
+pytest tests/test_migrations.py                       # proves migrations == models
+```
+
+Other useful commands: `flask --app run db current`, `db history`, `db downgrade -1`. Set `AUTO_MIGRATE=0` to
+turn off the automatic upgrade (for example if you prefer to run it as a deploy step). Migrations use Alembic's
+batch mode so `ALTER TABLE` works on SQLite.
+
 Project layout:
 
 ```
