@@ -17,7 +17,9 @@ number and billing frequency for you to review and confirm.
 - **Staged alerts** – each item has reminder stages (e.g. `30,7,1` days before). Alerts are raised once per
   stage, on the day, and when overdue. Category defaults: bills & subscriptions `7,1`, insurance `30,7`,
   passports `270,180,90` (many countries need six months' validity).
-- **Notifications** – alerts appear in-app with an unread badge. If SMTP is configured, digests are e-mailed.
+- **Notifications** – alerts appear in-app with an unread badge, are **pushed to your browser or phone** on any
+  device where you allowed push notifications (Web Push, works with the tab closed), and are e-mailed as a digest if
+  SMTP is configured.
 - **Dashboard** – overdue / due today / next 7 / 30 / 90 days, spend due in the next 30 days, and estimated
   monthly cost (annual premiums etc. normalised per month).
 - **Mark as renewed** – rolls recurring items forward to the next cycle; non-recurring items (passports) take the new expiry date.
@@ -43,7 +45,10 @@ Open <http://localhost:5000>, create an account and start adding items.
 | `DATABASE_URL` | `sqlite:///renewaltracker.db` | Any SQLAlchemy URL. The SQLite file lives in `instance/`. |
 | `DATE_DAY_FIRST` | `true` | How to read ambiguous dates like `03/04/2026` in e-mails (`true` = day/month, `false` = month/day). |
 | `CHECK_INTERVAL_HOURS` | `6` | How often the background scheduler checks for renewals. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | unset | Enable e-mail digests. Leave `SMTP_HOST` unset to keep alerts in-app only. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_USE_TLS`, `MAIL_FROM` | unset | Enable e-mail digests. Leave `SMTP_HOST` unset to keep alerts in-app and push only. |
+| `PUSH_ENABLED` | `true` | Browser push notifications on/off. |
+| `VAPID_PRIVATE_KEY` | auto-generated | P-256 key that signs push messages, as base64url raw key or PEM. If unset, one is generated on first run and stored in `instance/vapid.json`. Keep it stable: changing it invalidates every device's subscription. |
+| `VAPID_SUBJECT` | `mailto:renewaltracker@localhost` | Contact for push services, a `mailto:` or `https://` URL. |
 | `HOST`, `PORT`, `FLASK_DEBUG` | `127.0.0.1`, `5000`, `0` | Server binding and debug mode for `run.py`. |
 
 ### Running the renewal check from cron
@@ -51,6 +56,21 @@ Open <http://localhost:5000>, create an account and start adding items.
 ```bash
 0 8 * * * cd /path/to/RenewalTracker && .venv/bin/flask --app run check-renewals
 ```
+
+## Push notifications
+
+Open **Settings → Push notifications** and click **Allow push notifications**. The browser asks for permission
+once, then registers a service worker and a Web Push subscription that is stored for your account. When the
+renewal check raises new alerts, one notification per user is pushed to every device they enabled. Clicking it
+opens the Alerts page. **Send test notification** confirms the whole chain end to end.
+
+Notes:
+
+- Push requires a secure context: `https://` or `http://localhost`. Behind a reverse proxy, terminate TLS there.
+- Works in Chrome, Edge, Firefox and Safari 16.4+. On iOS the app must be added to the Home Screen first.
+- Subscriptions the push service reports as gone (HTTP 404/410) are removed automatically, as are ones that fail five times in a row.
+- Web Push encryption (RFC 8291) and VAPID signing (RFC 8292) are implemented in `renewaltracker/webpush.py`
+  on top of `cryptography`, so no extra push library is needed.
 
 ## Importing e-mails
 
@@ -81,6 +101,9 @@ All endpoints are JSON and live under `/api`. Authentication is cookie-session b
 | `POST` | `/api/imports/parse` | Upload `file` (multipart) or `{"text": ...}` → parsed proposal |
 | `POST` | `/api/imports/<id>/confirm` · `/discard` | Create item from proposal (body overrides fields) / discard |
 | `GET` | `/api/export.ics` | Calendar export |
+| `GET` | `/api/push/vapid-public-key` | Public key the browser needs to subscribe |
+| `GET/POST` | `/api/push/subscriptions` · `/api/push/subscribe` · `/api/push/unsubscribe` | Manage this account's push devices |
+| `POST` | `/api/push/test` | Send a test notification |
 
 ## Development
 
@@ -97,10 +120,11 @@ renewaltracker/
   config.py        environment-driven settings
   models.py        User, TrackedItem, Alert, EmailImport
   email_parser.py  .eml / text → renewal proposal
-  alerts.py        staged alert engine + SMTP digest
+  alerts.py        staged alert engine + e-mail / push dispatch
+  webpush.py       Web Push encryption (RFC 8291) + VAPID (RFC 8292)
   scheduler.py     background renewal checker
-  auth.py, api.py, imports.py   JSON blueprints
-  static/          single-page front end (no build step)
+  auth.py, api.py, imports.py, push_api.py   JSON blueprints
+  static/          single-page front end (no build step) + sw.js service worker
 tests/             pytest suite
 run.py             dev server entry point
 ```

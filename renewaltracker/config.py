@@ -33,6 +33,12 @@ class Config:
     SMTP_USE_TLS = _env_bool("SMTP_USE_TLS", True)
     MAIL_FROM = os.environ.get("MAIL_FROM", "renewaltracker@localhost")
 
+    # Browser push notifications (Web Push / VAPID). If VAPID_PRIVATE_KEY is
+    # unset a key pair is generated once and stored in instance/vapid.json.
+    PUSH_ENABLED = _env_bool("PUSH_ENABLED", True)
+    VAPID_PRIVATE_KEY = os.environ.get("VAPID_PRIVATE_KEY")  # base64url raw key or PEM
+    VAPID_SUBJECT = os.environ.get("VAPID_SUBJECT", "mailto:renewaltracker@localhost")
+
 
 class TestConfig(Config):
     TESTING = True

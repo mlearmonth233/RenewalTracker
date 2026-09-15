@@ -64,7 +64,7 @@ def pending_stages(item: TrackedItem, today: date) -> list[tuple[str, str, int]]
     return stages
 
 
-def check_renewals(today: date | None = None, *, send_email: bool = True) -> list[Alert]:
+def check_renewals(today: date | None = None, *, send_email: bool = True, send_push: bool = True) -> list[Alert]:
     """Create alerts for all items whose reminder window has been reached."""
     today = today or date.today()
     created: list[Alert] = []
@@ -99,7 +99,47 @@ def check_renewals(today: date | None = None, *, send_email: bool = True) -> lis
         _email_alerts(created)
         db.session.commit()
 
+    if send_push and created:
+        _push_alerts(created)
+        db.session.commit()
+
     return created
+
+
+def _push_alerts(alerts: list[Alert]) -> None:
+    """Send one browser push per user summarising their new alerts."""
+    keys = current_app.extensions.get("vapid")
+    if keys is None:
+        return
+    from .models import PushSubscription
+    from .push_api import deliver_to_subscriptions
+
+    by_user: dict[int, list[Alert]] = {}
+    for alert in alerts:
+        by_user.setdefault(alert.user_id, []).append(alert)
+
+    for user_id, user_alerts in by_user.items():
+        subs = PushSubscription.query.filter_by(user_id=user_id).all()
+        if not subs:
+            continue
+        user_alerts.sort(key=lambda a: a.days_until)
+        urgent = any(a.kind in ("overdue", "due_today") for a in user_alerts)
+        if len(user_alerts) == 1:
+            title = {"overdue": "Renewal overdue", "due_today": "Renewal due today"}.get(user_alerts[0].kind, "Renewal coming up")
+            body = user_alerts[0].message
+        else:
+            title = f"{len(user_alerts)} renewals need attention"
+            body = "\n".join(a.message for a in user_alerts[:4])
+            if len(user_alerts) > 4:
+                body += f"\n…and {len(user_alerts) - 4} more"
+        payload = {"title": title, "body": body, "tag": "renewaltracker-alerts", "url": "/#alerts", "requireInteraction": urgent}
+        try:
+            deliver_to_subscriptions(subs, payload, keys, urgency="high" if urgent else "normal")
+        except Exception:  # pragma: no cover - never let push failures break the checker
+            log.exception("Push delivery failed for user %s", user_id)
+        now = utcnow()
+        for alert in user_alerts:
+            alert.pushed_at = now
 
 
 def _email_alerts(alerts: list[Alert]) -> None:

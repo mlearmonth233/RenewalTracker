@@ -110,7 +110,7 @@ def confirm_import(import_id):
     record.status = "confirmed"
     record.created_item_id = item.id
     db.session.commit()
-    check_renewals(send_email=False)
+    check_renewals(send_email=False, send_push=False)
     return jsonify({"import": record.to_dict(), "item": item.to_dict()}), 201
 
 

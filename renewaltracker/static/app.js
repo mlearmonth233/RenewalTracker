@@ -115,6 +115,7 @@
     $("#user-name").textContent = state.user.username;
     showView("dashboard");
     refreshBadge();
+    initPush();
   }
 
   async function refreshBadge() {
@@ -534,6 +535,156 @@
     });
   }
 
+  // ------------------------------------------------------------------ push notifications
+  const push = {
+    supported: "serviceWorker" in navigator && "PushManager" in window && "Notification" in window,
+    serverEnabled: false,
+    publicKey: null,
+    registration: null,
+    subscription: null,
+  };
+
+  function urlBase64ToUint8Array(base64) {
+    const padding = "=".repeat((4 - (base64.length % 4)) % 4);
+    const raw = atob((base64 + padding).replace(/-/g, "+").replace(/_/g, "/"));
+    return Uint8Array.from(raw, (c) => c.charCodeAt(0));
+  }
+
+  async function initPush() {
+    try {
+      const meta = await api("/api/push/vapid-public-key");
+      push.serverEnabled = !!meta.enabled;
+      push.publicKey = meta.public_key;
+    } catch (_) { push.serverEnabled = false; }
+    if (!push.supported || !push.serverEnabled) return;
+    try {
+      push.registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      push.subscription = await push.registration.pushManager.getSubscription();
+      // Keep the server copy fresh (keys can rotate; account may have changed).
+      if (push.subscription && state.user && Notification.permission === "granted") {
+        await api("/api/push/subscribe", { method: "POST", body: { subscription: push.subscription.toJSON() } });
+      }
+    } catch (err) {
+      console.warn("Service worker registration failed:", err);
+    }
+  }
+
+  async function renderPushSettings() {
+    const status = $("#push-status");
+    const enableBtn = $("#push-enable-btn");
+    const disableBtn = $("#push-disable-btn");
+    const testBtn = $("#push-test-btn");
+    [enableBtn, disableBtn, testBtn].forEach((b) => b.classList.add("hidden"));
+
+    if (!push.supported) {
+      status.textContent = "This browser does not support push notifications. Try Chrome, Edge, Firefox, or Safari 16.4+ (installed to the Home Screen on iOS).";
+      return;
+    }
+    if (!push.serverEnabled) {
+      status.textContent = "Push notifications are disabled on this server.";
+      return;
+    }
+    if (!window.isSecureContext) {
+      status.textContent = "Push notifications need HTTPS (or localhost).";
+      return;
+    }
+    if (Notification.permission === "denied") {
+      status.textContent = "Notifications are blocked for this site. Allow them in your browser's site settings, then reload.";
+      return;
+    }
+    if (push.subscription) {
+      status.innerHTML = `<span class="pill ok">enabled</span> This device will receive renewal alerts.`;
+      disableBtn.classList.remove("hidden");
+      testBtn.classList.remove("hidden");
+    } else {
+      status.textContent = "Not enabled on this device.";
+      enableBtn.classList.remove("hidden");
+    }
+    await renderPushDevices();
+  }
+
+  async function renderPushDevices() {
+    const box = $("#push-devices");
+    try {
+      const current = push.subscription ? push.subscription.endpoint : "";
+      const data = await api(`/api/push/subscriptions?endpoint=${encodeURIComponent(current)}`);
+      if (!data.subscriptions.length) { box.innerHTML = ""; return; }
+      box.innerHTML = `<h3>Devices receiving alerts</h3>` + data.subscriptions.map((s) => {
+        const ua = (s.user_agent || "").match(/(Chrome|Firefox|Safari|Edg)[^\s;)]*/g);
+        const label = ua ? ua[ua.length - 1].replace("Edg", "Edge") : "Browser";
+        return `<div class="push-device"><span>${esc(label)} · ${esc(s.service)}${s.current ? " <strong>(this device)</strong>" : ""}</span>
+          <span class="muted">added ${new Date(s.created_at).toLocaleDateString()}</span>
+          <button class="btn btn-sm btn-ghost btn-danger" data-id="${s.id}" data-current="${s.current ? 1 : 0}">Remove</button></div>`;
+      }).join("");
+      $$("button[data-id]", box).forEach((b) => b.addEventListener("click", async () => {
+        await api("/api/push/unsubscribe", { method: "POST", body: { id: Number(b.dataset.id) } });
+        if (b.dataset.current === "1" && push.subscription) {
+          await push.subscription.unsubscribe().catch(() => {});
+          push.subscription = null;
+        }
+        renderPushSettings();
+      }));
+    } catch (_) { box.innerHTML = ""; }
+  }
+
+  $("#push-enable-btn").addEventListener("click", async () => {
+    const btn = $("#push-enable-btn");
+    btn.disabled = true;
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") {
+        toast("Notifications were not allowed.", true);
+        return;
+      }
+      if (!push.registration) push.registration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+      await navigator.serviceWorker.ready;
+      // Subscribing contacts the browser vendor's push service; if that is
+      // unreachable the promise can hang, so give up after a while.
+      const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error("the browser's push service did not respond. Check your internet connection and try again.")), 20000));
+      push.subscription = await Promise.race([
+        push.registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: urlBase64ToUint8Array(push.publicKey),
+        }),
+        timeout,
+      ]);
+      await api("/api/push/subscribe", { method: "POST", body: { subscription: push.subscription.toJSON() } });
+      toast("Push notifications enabled on this device.");
+    } catch (err) {
+      let hint = "";
+      if (/permission denied|registration failed/i.test(err.message) && Notification.permission === "granted") {
+        hint = " Private/incognito windows and some browsers block the Push API even after notifications are allowed. Try a normal window.";
+      }
+      toast("Could not enable push notifications: " + err.message + hint, true);
+    } finally {
+      btn.disabled = false;
+      renderPushSettings();
+    }
+  });
+
+  $("#push-disable-btn").addEventListener("click", async () => {
+    try {
+      if (push.subscription) {
+        await api("/api/push/unsubscribe", { method: "POST", body: { endpoint: push.subscription.endpoint } });
+        await push.subscription.unsubscribe();
+        push.subscription = null;
+      }
+      toast("Push notifications turned off on this device.");
+    } catch (err) {
+      toast(err.message, true);
+    }
+    renderPushSettings();
+  });
+
+  $("#push-test-btn").addEventListener("click", async () => {
+    try {
+      const res = await api("/api/push/test", { method: "POST", body: { endpoint: push.subscription ? push.subscription.endpoint : null } });
+      toast(res.sent ? "Test notification sent – it should appear in a moment." : "No notification was sent.", !res.sent);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
   // ------------------------------------------------------------------ settings
   function loadSettings() {
     const form = $("#settings-form");
@@ -542,6 +693,7 @@
     form.current_password.value = "";
     form.new_password.value = "";
     $("#settings-msg").textContent = "";
+    renderPushSettings();
   }
 
   $("#settings-form").addEventListener("submit", async (e) => {

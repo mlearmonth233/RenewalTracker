@@ -110,6 +110,7 @@ class User(db.Model):
     items = db.relationship("TrackedItem", backref="user", lazy=True, cascade="all, delete-orphan")
     alerts = db.relationship("Alert", backref="user", lazy=True, cascade="all, delete-orphan")
     imports = db.relationship("EmailImport", backref="user", lazy=True, cascade="all, delete-orphan")
+    push_subscriptions = db.relationship("PushSubscription", backref="user", lazy=True, cascade="all, delete-orphan")
 
     def set_password(self, password: str) -> None:
         self.password_hash = generate_password_hash(password)
@@ -252,6 +253,7 @@ class Alert(db.Model):
 
     created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
     emailed_at = db.Column(db.DateTime, nullable=True)
+    pushed_at = db.Column(db.DateTime, nullable=True)
     acknowledged_at = db.Column(db.DateTime, nullable=True)
 
     def to_dict(self) -> dict:
@@ -266,7 +268,36 @@ class Alert(db.Model):
             "message": self.message,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "emailed_at": self.emailed_at.isoformat() if self.emailed_at else None,
+            "pushed_at": self.pushed_at.isoformat() if self.pushed_at else None,
             "acknowledged": self.acknowledged_at is not None,
+        }
+
+
+class PushSubscription(db.Model):
+    """A browser's Web Push subscription (one per device/browser profile)."""
+
+    __tablename__ = "push_subscriptions"
+
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, index=True)
+    endpoint = db.Column(db.String(1000), nullable=False, unique=True)
+    p256dh = db.Column(db.String(200), nullable=False)
+    auth = db.Column(db.String(100), nullable=False)
+    user_agent = db.Column(db.String(300), nullable=True)
+    created_at = db.Column(db.DateTime, default=utcnow, nullable=False)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+    failures = db.Column(db.Integer, default=0, nullable=False)
+
+    def to_dict(self) -> dict:
+        # Never expose the keys or the full endpoint – the endpoint is a
+        # capability URL that lets anyone holding it send pushes.
+        host = self.endpoint.split("/")[2] if "//" in self.endpoint else self.endpoint[:40]
+        return {
+            "id": self.id,
+            "service": host,
+            "user_agent": self.user_agent,
+            "created_at": self.created_at.isoformat() if self.created_at else None,
+            "last_used_at": self.last_used_at.isoformat() if self.last_used_at else None,
         }
 
 

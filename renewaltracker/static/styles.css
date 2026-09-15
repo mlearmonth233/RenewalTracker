@@ -146,6 +146,12 @@ main { max-width: 1100px; margin: 0 auto; padding: 1.5rem 1.25rem 4rem; }
 .confidence { font-size: 0.8rem; color: var(--muted); margin-bottom: 0.75rem; }
 .excerpt { background: #f7f8fb; border: 1px solid var(--border); border-radius: 8px; padding: 0.6rem; font-size: 0.78rem; white-space: pre-wrap; max-height: 180px; overflow: auto; color: var(--muted); margin-top: 0.75rem; }
 
+/* Push notifications */
+.push-status { display: flex; align-items: center; gap: 0.5rem; font-size: 0.9rem; }
+.push-devices h3 { margin-top: 1.25rem; }
+.push-device { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; padding: 0.5rem 0; border-top: 1px solid var(--border); font-size: 0.9rem; flex-wrap: wrap; }
+.push-device > span:first-child { flex: 1; }
+
 /* Modal */
 .modal { position: fixed; inset: 0; background: rgba(15, 20, 30, 0.45); display: grid; place-items: center; z-index: 50; padding: 1rem; }
 .modal-card { background: var(--surface); border-radius: 14px; padding: 1.5rem; width: min(720px, 100%); max-height: 95vh; overflow: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.25); }

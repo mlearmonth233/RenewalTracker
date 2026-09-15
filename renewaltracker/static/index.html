@@ -124,7 +124,18 @@
     <section id="view-settings" class="view hidden">
       <div class="view-header"><h1>Settings</h1></div>
       <div class="card narrow">
-        <h2>Notifications</h2>
+        <h2>Push notifications</h2>
+        <p class="muted">Get a notification on this device when a renewal is coming up, even when RenewalTracker isn't open.</p>
+        <div id="push-status" class="push-status muted">Checking browser support…</div>
+        <div class="actions" style="margin-top:0.75rem">
+          <button id="push-enable-btn" class="btn btn-primary hidden">Allow push notifications</button>
+          <button id="push-disable-btn" class="btn btn-ghost hidden">Turn off on this device</button>
+          <button id="push-test-btn" class="btn btn-ghost hidden">Send test notification</button>
+        </div>
+        <div id="push-devices" class="push-devices"></div>
+      </div>
+      <div class="card narrow">
+        <h2>E-mail notifications</h2>
         <form id="settings-form" class="form">
           <label>Reminder e-mail address <input name="email" type="email" placeholder="you@example.com"></label>
           <label class="check"><input type="checkbox" name="notify_by_email"> Send alert digests by e-mail (requires SMTP configured on the server)</label>
@@ -140,6 +151,7 @@
         <ul class="muted">
           <li>Each item has reminder stages (e.g. <code>30,7,1</code> days before). An alert is raised once per stage, plus on the day and when overdue.</li>
           <li>The server checks automatically every few hours. You can also trigger a check from the dashboard.</li>
+          <li>New alerts are shown in-app, pushed to any device where you allowed push notifications, and e-mailed if the server has SMTP configured.</li>
           <li>Passports default to reminders at 270, 180 and 90 days because many countries require six months of remaining validity.</li>
           <li>Export your renewals to your calendar app with the <em>.ics</em> button on the Items page.</li>
         </ul>

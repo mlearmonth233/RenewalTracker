@@ -22,18 +22,29 @@ def create_app(config_object: type | object | None = None) -> Flask:
 
     db.init_app(app)
 
-    from . import api, auth, imports
+    from . import api, auth, imports, push_api
 
     app.register_blueprint(auth.bp)
     app.register_blueprint(api.bp)
     app.register_blueprint(imports.bp)
+    app.register_blueprint(push_api.bp)
 
     with app.app_context():
         db.create_all()
 
+    _init_push(app)
+
     @app.get("/")
     def index():
         return send_from_directory(app.static_folder, "index.html")
+
+    @app.get("/sw.js")
+    def service_worker():
+        # Served from the site root so the worker's scope covers the whole app.
+        response = send_from_directory(app.static_folder, "sw.js")
+        response.headers["Service-Worker-Allowed"] = "/"
+        response.headers["Cache-Control"] = "no-cache"
+        return response
 
     @app.get("/health")
     def health():
@@ -62,3 +73,19 @@ def create_app(config_object: type | object | None = None) -> Flask:
             click.echo(f"  - {alert.message}")
 
     return app
+
+
+def _init_push(app: Flask) -> None:
+    """Load or generate the VAPID key pair used to sign browser push messages."""
+    app.extensions["vapid"] = None
+    if not app.config.get("PUSH_ENABLED", True):
+        return
+    from .webpush import load_or_create_vapid_keys
+
+    storage = None if app.config.get("TESTING") else os.path.join(app.instance_path, "vapid.json")
+    try:
+        app.extensions["vapid"] = load_or_create_vapid_keys(
+            app.config.get("VAPID_PRIVATE_KEY"), app.config.get("VAPID_SUBJECT", "mailto:renewaltracker@localhost"), storage
+        )
+    except Exception:  # pragma: no cover - bad key material in config
+        logging.getLogger(__name__).exception("Push notifications disabled: could not load VAPID keys")

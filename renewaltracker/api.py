@@ -189,7 +189,7 @@ def create_item():
     db.session.add(item)
     db.session.commit()
     # Generate any alerts that already apply (e.g. an item added inside its window).
-    check_renewals(send_email=False)
+    check_renewals(send_email=False, send_push=False)
     return jsonify(item.to_dict()), 201
 
 
@@ -218,7 +218,7 @@ def update_item(item_id):
         return jsonify({"error": str(exc)}), 400
     item.updated_at = utcnow()
     db.session.commit()
-    check_renewals(send_email=False)
+    check_renewals(send_email=False, send_push=False)
     return jsonify(item.to_dict())
 
 
