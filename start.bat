@@ -34,7 +34,9 @@ if "%NEED_INSTALL%"=="1" (
   copy /y requirements.txt "%STAMP%" >nul
 )
 
-".venv\Scripts\python.exe" run.py %*
+REM Use pythonw.exe (windowless Python) to run the app without showing a console window.
+REM pythonw is available in the venv Scripts folder, just like python.exe.
+".venv\Scripts\pythonw.exe" run.py %*
 if errorlevel 1 goto :fail
 exit /b 0
 

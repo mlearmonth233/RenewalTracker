@@ -56,9 +56,16 @@ To build it yourself: `pip install -r requirements.txt -r requirements-build.txt
 
 ### Option 2 – Double-click launcher (Python 3.11+ installed)
 
-Clone or download the repository, then double-click **`start.bat`** (Windows) or **`start.command`** (macOS),
-or run `./start.sh` (Linux). The first run creates a private virtual environment and installs dependencies;
-later runs start instantly. Any arguments are passed to `run.py`, e.g. `./start.sh --port 8080`.
+Clone or download the repository, then double-click the launcher for your system:
+- **Windows**: **`start.vbs`** (recommended – no console windows) or `start.bat`
+- **macOS**: **`start.command`**
+- **Linux**: **`start.sh`**
+
+The first run creates a private virtual environment and installs dependencies; later runs start instantly.
+Any arguments are passed to `run.py`, e.g. `./start.sh --port 8080`.
+
+On Windows, `start.vbs` is the smoothest experience: it hides all console windows and opens the app directly
+in your browser. If you prefer to see output (e.g. for debugging), use `start.bat` instead.
 
 ### Option 3 – Docker
 
