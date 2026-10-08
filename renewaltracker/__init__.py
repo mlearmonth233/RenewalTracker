@@ -26,7 +26,7 @@ def create_app(config_object: type | object | None = None) -> Flask:
     app.config.from_object(config_object or Config)
     os.makedirs(app.instance_path, exist_ok=True)
 
-    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    _init_logging(app.instance_path)
 
     _init_secret_key(app)
     db.init_app(app)
@@ -92,6 +92,30 @@ def create_app(config_object: type | object | None = None) -> Flask:
             click.echo(f"  - {alert.message}")
 
     return app
+
+
+def _init_logging(instance_path: str) -> None:
+    """Set up logging to console and file."""
+    import logging.handlers
+    log_file = os.path.join(instance_path, "renewaltracker.log")
+    formatter = logging.Formatter("%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+    # Console handler (always, for user feedback)
+    console = logging.StreamHandler()
+    console.setLevel(logging.INFO)
+    console.setFormatter(formatter)
+
+    # File handler (for debugging)
+    file_handler = logging.handlers.RotatingFileHandler(
+        log_file, maxBytes=1024 * 1024, backupCount=3
+    )
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(formatter)
+
+    root = logging.getLogger()
+    root.setLevel(logging.DEBUG)
+    root.addHandler(console)
+    root.addHandler(file_handler)
 
 
 def _init_secret_key(app: Flask) -> None:

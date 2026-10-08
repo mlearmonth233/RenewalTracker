@@ -35,8 +35,8 @@ account and start adding items.
 ### Option 1 – Standalone app (no Python needed)
 
 Download the build for your system from the **Releases** page (or the *Build* workflow artifacts), unzip, and run
-`RenewalTracker.exe` (Windows) or `./RenewalTracker` (macOS / Linux). A small console window shows the address
-and closing it (or Ctrl+C) stops the app. Your data is stored in your user profile:
+`RenewalTracker.exe` (Windows) or `./RenewalTracker` (macOS / Linux). The app starts silently and opens automatically
+in your browser. Your data is stored in your user profile:
 
 | System | Data folder |
 | --- | --- |
@@ -128,6 +128,24 @@ Notes:
 - Subscriptions the push service reports as gone (HTTP 404/410) are removed automatically, as are ones that fail five times in a row.
 - Web Push encryption (RFC 8291) and VAPID signing (RFC 8292) are implemented in `renewaltracker/webpush.py`
   on top of `cryptography`, so no extra push library is needed.
+
+## Debugging and logs
+
+If the app fails to start, the executable logs errors to a file in your data folder:
+
+| System | Log file |
+| --- | --- |
+| Windows | `%LOCALAPPDATA%\RenewalTracker\renewaltracker.log` |
+| macOS | `~/Library/Application Support/RenewalTracker/renewaltracker.log` |
+| Linux | `~/.local/share/renewaltracker/renewaltracker.log` |
+
+Open the log file in a text editor if you encounter startup issues.
+
+To see verbose output while running from source, use `FLASK_DEBUG=1`:
+
+```bash
+FLASK_DEBUG=1 python run.py
+```
 
 ## Importing e-mails
 
